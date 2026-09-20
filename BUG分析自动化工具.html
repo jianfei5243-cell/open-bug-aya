@@ -285,7 +285,7 @@ function buildRiskDesc(m){
     root= m.devs.length===1?'疑似单点/系统性问题':(m.devs.length>=5?'多开发交叉，需统一owner':'待逐单定位');
     act= m.sevRate>=60?'优先排期，集中攻坚':'按未解决数排期，随迭代收口';
   }
-  const samples=m.samples.slice(0,3).map(s=>s.summary||s.id||'').filter(Boolean).join('；');
+  const samples=m.samples.slice(0,3).map(s=>[s.id,s.summary].filter(Boolean).join(' ')).filter(Boolean).join('；');
   return {core,root,act,desc,samples};
 }
 
