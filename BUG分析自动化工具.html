@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUG 分析自动化工具</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script>
+// SheetJS 多源回退
+if (typeof XLSX === 'undefined') {
+  document.write('<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+}
+</script>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#ffffff; --line:#e5e9f2; --text:#1f2937; --muted:#6b7280;
+  --brand:#1f4e79; --accent:#2f80ed; --red:#d94f4f; --amber:#e5a13a; --green:#3a9d5d;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(135deg,#1f4e79,#2f80ed);color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:20px}
+header .sub{margin-top:4px;font-size:12px;opacity:.85}
+.wrap{max-width:1280px;margin:0 auto;padding:18px 20px 60px}
+.dropzone{border:2px dashed #c7d2e0;border-radius:12px;background:#fff;padding:26px;text-align:center;cursor:pointer;transition:.2s;margin-top:16px}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:#f0f6ff}
+.dropzone .big{font-size:16px;font-weight:600}
+.dropzone .hint{font-size:12px;color:var(--muted);margin-top:6px}
+.toolbar{display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap}
+button{background:var(--accent);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-size:13px;cursor:pointer}
+button.ghost{background:#fff;color:var(--brand);border:1px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .k{font-size:12px;color:var(--muted)}
+.card .v{font-size:26px;font-weight:700;margin-top:4px}
+.card .d{font-size:11px;color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:4px;margin:16px 0 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{padding:9px 16px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--muted);background:transparent}
+.tab.active{background:#fff;color:var(--brand);border-color:var(--line);font-weight:600}
+.panel{display:none}
+.panel.active{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.box h3{margin:0 0 10px;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:#f0f4fa;font-weight:600;white-space:nowrap}
+tr:nth-child(even) td{background:#fafbfe}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.b-P0{background:#fde2e2;color:#c0392b}
+.b-P1{background:#fff0d6;color:#b9770e}
+.b-P2{background:#fff4c2;color:#8a6d1a}
+.b-ob{background:#e2f0e5;color:#2f7d44}
+.b-sev{background:#fde2e2;color:#c0392b}
+.b-urg{background:#c0392b;color:#fff}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.small{font-size:11px;color:var(--muted)}
+.chartbox{position:relative;height:300px}
+.chartbox.sm{height:260px}
+.toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:.3s;z-index:99}
+.footer{text-align:center;font-size:11px;color:var(--muted);margin-top:24px}
+@media print{ body *{visibility:hidden} #p6,#p6 *{visibility:visible} #p6{position:absolute;left:0;top:0;width:100%;padding:0} .noprint{display:none!important} }
+.act{display:flex;gap:10px;padding:8px 10px;border:1px solid #e5e9f2;border-radius:8px;margin-bottom:8px;font-size:13px;background:#fff}
+.act .an{flex:0 0 20px;height:20px;border-radius:50%;background:#2f80ed;color:#fff;font-size:12px;text-align:center;line-height:20px}
+.tip{background:#fff8e6;border:1px solid #f2dca0;border-radius:8px;padding:8px 12px;font-size:12px;color:#8a6d1a;margin-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>BUG 分析自动化工具</h1>
+  <div class="sub">拖入或选择 BUG 单明细 Excel，自动识别高风险模块并生成风险描述（纯前端，数据不出本机）</div>
+</header>
+
+<div class="wrap">
+  <div id="dropzone" class="dropzone">
+    <div class="big">📄 点击选择 或 拖拽 Excel 文件到此处</div>
+    <div class="hint">支持 .xlsx / .xls，需包含字段：优先级、组件、解决结果、状态、经办人、报告人、Reproduce Probability、创建日期、概要 等</div>
+  </div>
+  <input type="file" id="file" accept=".xlsx,.xls" style="display:none">
+
+  <div id="toolbar" class="toolbar" style="display:none">
+    <button id="btnReload">重新载入</button>
+    <button id="btnExport" class="ghost">导出分析结果 Excel</button>
+    <button id="btnReport" class="ghost">导出风险评估汇总报告</button>
+    <span id="meta" class="small"></span>
+  </div>
+
+  <div id="main" style="display:none">
+    <div class="cards" id="cards"></div>
+
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-p="p1">总览</div>
+      <div class="tab" data-p="p2">高风险模块</div>
+      <div class="tab" data-p="p3">开发负载</div>
+      <div class="tab" data-p="p4">阻断单明细</div>
+      <div class="tab" data-p="p5">每日趋势</div>
+      <div class="tab" data-p="p6">风险评估报告</div>
+    </div>
+
+    <div class="panel active" id="p1"></div>
+    <div class="panel" id="p2"></div>
+    <div class="panel" id="p3"></div>
+    <div class="panel" id="p4"></div>
+    <div class="panel" id="p5"></div>
+    <div class="panel" id="p6"></div>
+  </div>
+  <div class="footer">本地运行 · SheetJS + Chart.js 用于解析与绘图 · 所有计算均在浏览器内完成</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+let RAW = [];           // 全部行
+let RESULT = null;      // 分析结果
+const charts = {};
+
+const SEV_ORDER = {紧急:0, 严重:1, 重要:2, 次要:3};
+const SEV_COLOR = {紧急:'#c0392b', 严重:'#e74c3c', 重要:'#f39c12', 次要:'#95a5a6'};
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0, 2200); }
+
+function val(r,k){ const v=r[k]; return (v===null||v===undefined) ? '' : String(v).trim(); }
+
+// 字段名兼容
+function col(r, names){
+  for(const n of names){ if(r[n]!==undefined && r[n]!==null) return r[n]; }
+  return '';
+}
+function firstCol(r, names){
+  for(const n of names){ if(r[n]!==undefined) return n; }
+  return names[0];
+}
+
+function parseDate(v){
+  if(v===null||v===undefined||v==='') return null;
+  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d; }
+  const s=String(v).trim();
+  const m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d=new Date(s);
+  return isNaN(d)?null:d;
+}
+
+function fmtDate(d){ if(!d) return ''; const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+dd; }
+function num(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
+function pct(a,b){ return b? (a/b*100).toFixed(1)+'%' : '0%'; }
+
+// ---------- 数据读取 ----------
+const dropzone=document.getElementById('dropzone');
+const fileInput=document.getElementById('file');
+dropzone.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); });
+['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+document.getElementById('btnReload').addEventListener('click',()=>fileInput.click());
+document.getElementById('btnExport').addEventListener('click',exportExcel);
+document.getElementById('btnReport').addEventListener('click',exportReport);
+
+function loadFile(file){
+  if(typeof XLSX==='undefined'){ toast('XLSX 库加载失败，请联网后刷新页面'); return; }
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(!rows.length){ toast('未读到数据'); return; }
+      RAW=rows;
+      analyze();
+      document.getElementById('toolbar').style.display='flex';
+      document.getElementById('main').style.display='block';
+      document.getElementById('meta').textContent=`已载入 ${rows.length} 条 · ${file.name}`;
+      dropzone.style.display='none';
+      toast('分析完成');
+    }catch(err){ toast('解析失败：'+err.message); console.error(err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ---------- 核心分析 ----------
+function analyze(){
+  const prioKey=firstCol(RAW[0],['优先级']);
+  const compKey=firstCol(RAW[0],['组件']);
+  const resKey=firstCol(RAW[0],['解决结果']);
+  const stKey=firstCol(RAW[0],['状态']);
+  const devKey=firstCol(RAW[0],['经办人']);
+  const repKey=firstCol(RAW[0],['报告人']);
+  const repProbKey=firstCol(RAW[0],['Reproduce Probability','复现概率','复现']);
+  const dateKey=firstCol(RAW[0],['创建日期','创建时间']);
+  const updKey=firstCol(RAW[0],['已更新','更新时间','更新日期']);
+  const modelKey=firstCol(RAW[0],['MODEL','机型']);
+  const summaryKey=firstCol(RAW[0],['概要']);
+  const idKey=firstCol(RAW[0],['关键字']);
+
+  const all=RAW.map(r=>({
+    prio:val(r,prioKey), comp:val(r,compKey), res:val(r,resKey), st:val(r,stKey),
+    dev:val(r,devKey), rep:val(r,repKey), prob:val(r,repProbKey),
+    date:parseDate(val(r,dateKey)), updated:parseDate(val(r,updKey)),
+    model:val(r,modelKey), summary:val(r,summaryKey), id:val(r,idKey),
+    resolved:['已修复','重复提交','不能修复','By Design'].includes(val(r,resKey))
+  }));
+
+  const unresolved=all.filter(r=>r.res==='未解决');
+  const sevUrg=p=>p==='严重'||p==='紧急';
+  const biz=r=>/必现/.test(r.prob);
+  const uncertain=r=>r.st==='More Info'||r.st==='Reopen';
+
+  // ---- 模块风险 ----
+  const map={};
+  unresolved.forEach(r=>{
+    const c=r.comp||'(空)';
+    if(!map[c]) map[c]={comp:c,total:0,unres:0,sev:0,urg:0,sevUrg:0,biz:0,unc:0,devs:new Set(),reps:new Set(),models:new Set(),samples:[]};
+    const m=map[c];
+    m.total++; m.unres++; m.biz+=biz(r)?1:0; m.unc+=uncertain(r)?1:0;
+    if(r.prio==='紧急') m.urg++; if(r.prio==='严重') m.sev++; if(sevUrg(r.prio)) m.sevUrg++;
+    if(r.dev) m.devs.add(r.dev); if(r.rep) m.reps.add(r.rep); if(r.model) m.models.add(r.model);
+    if(sevUrg(r.prio)) m.samples.push(r);
+  });
+  let mods=Object.values(map);
+  const norm=arr=>{ const a=arr.map(Number); const mn=Math.min(...a), mx=Math.max(...a); return a.map(x=>mx===mn?0:(x-mn)/(mx-mn)*100); };
+  const nSevUrg=norm(mods.map(m=>m.sevUrg));
+  const nUnresRate=norm(mods.map(m=>m.total?m.unres/m.total*100:0));
+  const nSevRate=norm(mods.map(m=>m.total?m.sevUrg/m.total*100:0));
+  const nBizRate=norm(mods.map(m=>m.total?m.biz/m.total*100:0));
+  const nUnres=norm(mods.map(m=>m.unres));
+  const nUnc=norm(mods.map(m=>m.unc));
+  mods.forEach((m,i)=>{
+    m.unresRate=m.total?m.unres/m.total*100:0;
+    m.sevRate=m.total?m.sevUrg/m.total*100:0;
+    m.bizRate=m.total?m.biz/m.total*100:0;
+    m.score=Math.round(nSevUrg[i]*0.35+nUnresRate[i]*0.20+nSevRate[i]*0.15+nBizRate[i]*0.10+nUnres[i]*0.15+nUnc[i]*0.05);
+    m.devs=[...m.devs]; m.reps=[...m.reps]; m.models=[...m.models];
+    m.tier = (DESC_OVERRIDE[m.comp] && DESC_OVERRIDE[m.comp].tier) || (m.total<3 ? '观察' : (m.score>=60?'P0':m.score>=35?'P1':'P2'));
+  });
+  mods.sort((a,b)=>b.score-a.score || b.sevUrg-a.sevUrg || b.total-a.total);
+
+  const blockers=unresolved.filter(r=>sevUrg(r.prio)).sort((a,b)=>SEV_ORDER[a.prio]-SEV_ORDER[b.prio]);
+
+  RESULT={all,unresolved,mods,blockers,prioKey,compKey,devKey,resKey,stKey};
+
+  renderCards();
+  renderOverview();
+  renderModules();
+  renderDevLoad();
+  renderBlockers();
+  renderTrend();
+  renderReport();
+}
+
+// ---------- 风险描述引擎 ----------
+const DESC_OVERRIDE={
+  'FW-稳定性':{tier:'P0',core:'crash/死机/黑屏，跨机型，含紧急Reopen',root:'系统/框架层崩溃与资源泄漏',act:'成立稳定性专项，Reopen单先复现再改'},
+  'FW-运动报告':{core:'双端轨迹/图表数据不一致',root:'固件端与APP端运动数据链路算法不一致',act:'指定统一owner，做数据协议对齐'},
+  'FW-性能':{core:'时延/帧率超标，单点开发',root:'性能优化滞后，测量口径不统一',act:'统一标准脚本，合并重复单再二分处理'},
+  'FW-睡眠':{core:'睡眠数据同步/算法不一致',root:'睡眠算法+云同步协议问题',act:'并入健康数据专项联合排查'},
+  'FW-运动':{core:'轨迹漂移、交互异常，多开发交叉',root:'运动状态机+锁定+轨迹算法混合',act:'指定运动负责人，拆分三条子线'},
+  'FW-运动中':{core:'节拍器/长按结束/锁定解锁',root:'运动状态机与输入锁定逻辑缺陷',act:'并入运动线统一排查'},
+  'FW-运动设置':{core:'100%必现，体验面广',root:'设置状态同步与生效逻辑',act:'随运动线收口'},
+  'FW-心率':{core:'心率区间/广播异常',root:'心率算法+运动联动逻辑',act:'并入健康数据专项'},
+  'FW-压力':{core:'压力数据异常',root:'压力算法+同步',act:'并入健康数据专项'},
+  'FW-健康扫描':{core:'双设备健康数据同步不一致',root:'健康数据同步链路',act:'并入健康数据专项'},
+};
+
+function buildRiskDesc(m){
+  const o=DESC_OVERRIDE[m.comp];
+  let core,root,act,desc;
+  if(o){ core=o.core; root=o.root; act=o.act;
+    desc=`${m.total}条未解决、${m.sevUrg}条严重+紧急（含${m.urg}紧急），必现率${m.bizRate.toFixed(1)}%、严重率${m.sevRate.toFixed(1)}%；${o.core}。`;
+  } else {
+    const seg=[];
+    if(m.sevUrg>=8) seg.push('严重/紧急缺陷密集，发布阻断风险高');
+    if(m.sevRate>=60) seg.push('严重率偏高');
+    if(m.bizRate>=80) seg.push('多为必现');
+    if(m.devs.length===1) seg.push('单点开发，存在资源瓶颈');
+    if(m.devs.length>=5) seg.push('多开发交叉，缺统一owner');
+    if(m.unc>0) seg.push('含MoreInfo/Reopen，定位未收敛');
+    if(m.models.length>1) seg.push('跨机型');
+    core=seg[0]||'一般风险';
+    desc=`${m.total}条未解决、${m.sevUrg}条严重+紧急，必现率${m.bizRate.toFixed(1)}%、严重率${m.sevRate.toFixed(1)}%；${seg.join('；')}。`;
+    root= m.devs.length===1?'疑似单点/系统性问题':(m.devs.length>=5?'多开发交叉，需统一owner':'待逐单定位');
+    act= m.sevRate>=60?'优先排期，集中攻坚':'按未解决数排期，随迭代收口';
+  }
+  const samples=m.samples.slice(0,3).map(s=>s.summary||s.id||'').filter(Boolean).join('；');
+  return {core,root,act,desc,samples};
+}
+
+// ---------- 渲染 ----------
+function renderCards(){
+  const {all,unresolved,blockers}=RESULT;
+  const sev=all.filter(r=>r.prio==='严重').length;
+  const urg=all.filter(r=>r.prio==='紧急').length;
+  const sevUrgUnres=blockers.length;
+  const items=[
+    {k:'BUG 总数',v:all.length,d:`${unresolved.length} 条未解决`},
+    {k:'未解决',v:unresolved.length,d:`${pct(unresolved.length,all.length)}`},
+    {k:'严重+紧急(未解决)',v:sevUrgUnres,d:`严重${blockers.filter(r=>r.prio==='严重').length} · 紧急${blockers.filter(r=>r.prio==='紧急').length}`},
+    {k:'必现率',v:pct(unresolved.filter(r=>/必现/.test(r.prob)).length,unresolved.length),d:'未解决中必现占比'},
+  ];
+  document.getElementById('cards').innerHTML=items.map(i=>`<div class="card"><div class="k">${i.k}</div><div class="v">${i.v}</div><div class="d">${i.d}</div></div>`).join('');
+}
+
+function renderOverview(){
+  const {all,unresolved}=RESULT;
+  const count=(arr,fn)=>arr.filter(fn).length;
+  const prio=['紧急','严重','重要','次要'].map(p=>({名称:p,数量:count(all,r=>r.prio===p)})).filter(x=>x.数量>0);
+  const st={}; all.forEach(r=>st[r.st||'(空)']=(st[r.st||'(空)']||0)+1);
+  const res={}; all.forEach(r=>res[r.res||'(空)']=(res[r.res||'(空)']||0)+1);
+  const model={}; all.forEach(r=>model[r.model||'(空)']=(model[r.model||'(空)']||0)+1);
+
+  const stTable=toTable(['状态','数量','占比'],Object.entries(st).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k,v,pct(v,all.length)]));
+  const resTable=toTable(['解决结果','数量','占比'],Object.entries(res).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k,v,pct(v,all.length)]));
+  const modelTable=toTable(['机型','数量'],Object.entries(model).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k,v]));
+
+  document.getElementById('p1').innerHTML=`
+    <div class="grid2">
+      <div class="box"><h3>优先级分布</h3><div class="chartbox sm"><canvas id="cPrio"></canvas></div></div>
+      <div class="box"><h3>状态分布</h3>${stTable}</div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="box"><h3>解决结果分布</h3>${resTable}</div>
+      <div class="box"><h3>机型分布</h3>${modelTable}</div>
+    </div>`;
+  drawDonut('cPrio', prio.map(x=>x.名称), prio.map(x=>x.数量), prio.map(x=>SEV_COLOR[x.名称]||'#999'));
+}
+
+function renderModules(){
+  const {mods}=RESULT;
+  const top=mods.slice(0,30);
+  const TIER_ORDER={P0:0,P1:1,P2:2,观察:3};
+  const ordered=[...top].sort((a,b)=> (TIER_ORDER[a.tier]??9)-(TIER_ORDER[b.tier]??9) || b.score-a.score || b.sevUrg-a.sevUrg);
+  const rows=ordered.map((m,i)=>{
+    const d=buildRiskDesc(m);
+    const tierCls=m.tier==='P0'?'b-P0':m.tier==='P1'?'b-P1':m.tier==='P2'?'b-P2':'b-ob';
+    return `<tr>
+      <td><span class="badge ${tierCls}">${m.tier}</span></td>
+      <td><b>${esc(m.comp)}</b></td>
+      <td class="num">${m.total}</td>
+      <td class="num">${m.sevUrg}</td>
+      <td class="num">${m.urg}</td>
+      <td class="num">${m.bizRate.toFixed(0)}%</td>
+      <td class="num">${m.sevRate.toFixed(0)}%</td>
+      <td class="num">${m.devs.length}</td>
+      <td>${esc(d.core)}</td>
+      <td>${esc(d.desc)}</td>
+      <td class="small">${esc(d.samples||'—')}</td>
+      <td class="small">${esc(d.root)}</td>
+      <td class="small">${esc(d.act)}</td>
+    </tr>`;
+  }).join('');
+  const head=['等级','模块','未解决','严重+紧急','紧急','必现率','严重率','开发数','核心风险','详细风险描述','典型缺陷','根因倾向','建议动作'];
+  document.getElementById('p2').innerHTML=`
+    <div class="box"><h3>高风险模块 Pareto（按风险分排序）</h3><div class="chartbox"><canvas id="cPareto"></canvas></div></div>
+    <div class="box" style="margin-top:16px;overflow:auto"><h3>高风险模块明细与风险描述</h3>
+      <table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+      <div class="tip">评分权重：未解决严重紧急35% + 未解决率20% + 严重率15% + 未解决总数15% + 必现率10% + 不确定项5%；样本<3标为「观察」。</div>
+    </div>`;
+
+  const top15=top.slice(0,15);
+  drawPareto('cPareto', top15.map(m=>m.comp), top15.map(m=>m.sevUrg), top15.map(m=>m.total));
+}
+
+function renderDevLoad(){
+  const {blockers}=RESULT;
+  const map={};
+  blockers.forEach(r=>{
+    if(!map[r.dev]) map[r.dev]={dev:r.dev||'(空)',total:0,urg:0,sev:0,mods:{},tests:new Set(),models:new Set()};
+    const m=map[r.dev];
+    m.total++; if(r.prio==='紧急') m.urg++; if(r.prio==='严重') m.sev++;
+    m.mods[r.comp]=(m.mods[r.comp]||0)+1;
+    if(r.rep) m.tests.add(r.rep); if(r.model) m.models.add(r.model);
+  });
+  const devs=Object.values(map).sort((a,b)=>b.total-a.total||b.urg-a.urg);
+  const rows=devs.map(d=>{
+    const modsStr=Object.entries(d.mods).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}×${v}`).join('、');
+    return `<tr><td><b>${esc(d.dev)}</b></td><td class="num">${d.total}</td><td class="num">${d.urg}</td><td class="num">${d.sev}</td><td class="num">${Object.keys(d.mods).length}</td><td>${esc(modsStr)}</td></tr>`;
+  }).join('');
+  document.getElementById('p3').innerHTML=`
+    <div class="grid2">
+      <div class="box"><h3>开发阻断负载 Top15</h3><div class="chartbox sm"><canvas id="cDev"></canvas></div></div>
+      <div class="box" style="overflow:auto"><h3>开发阻断负载明细（严重+紧急未解决）</h3>
+        <table><thead><tr><th>开发</th><th>阻断单</th><th>紧急</th><th>严重</th><th>涉及模块数</th><th>模块明细</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>
+    </div>`;
+  const top=devs.slice(0,15);
+  drawBar('cDev', top.map(d=>d.dev), top.map(d=>d.total), '阻断单数', '#2f80ed');
+}
+
+function renderBlockers(){
+  const {blockers}=RESULT;
+  const rows=blockers.map(r=>{
+    const p=SEV_COLOR[r.prio]||'#999';
+    return `<tr>
+      <td><span class="badge" style="background:${p};color:#fff">${esc(r.prio)}</span></td>
+      <td>${esc(r.comp)}</td><td>${esc(r.id)}</td>
+      <td>${esc(r.summary)}</td>
+      <td>${esc(r.st)}</td><td>${esc(r.dev)}</td><td>${esc(r.rep)}</td>
+      <td>${esc(r.model)}</td><td>${fmtDate(r.date)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('p4').innerHTML=`
+    <div class="box" style="overflow:auto"><h3>严重+紧急未解决阻断单明细（共 ${blockers.length} 条）</h3>
+      <table><thead><tr><th>优先级</th><th>组件</th><th>关键字</th><th>概要</th><th>状态</th><th>经办人</th><th>报告人</th><th>机型</th><th>创建日期</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+}
+
+function renderTrend(){
+  const {all,unresolved}=RESULT;
+  // 每日提交（全部按创建日期）
+  const sub={};
+  all.forEach(r=>{ if(!r.date) return; const k=fmtDate(r.date); sub[k]=(sub[k]||0)+1; });
+  // 研发解决（已修复/重复提交/不能修复/By Design，按已更新日期）
+  const reso={};
+  all.forEach(r=>{ if(!r.resolved) return; const d=r.updated||r.date; if(!d) return; const k=fmtDate(d); reso[k]=(reso[k]||0)+1; });
+  const cmpKeys=Array.from(new Set([...Object.keys(sub),...Object.keys(reso)])).sort();
+  const subArr=cmpKeys.map(k=>sub[k]||0);
+  const resoArr=cmpKeys.map(k=>reso[k]||0);
+
+  // 未解决每日新增
+  const by={};
+  unresolved.forEach(r=>{ if(!r.date) return; const k=fmtDate(r.date); if(!by[k]) by[k]={total:0,sev:0}; by[k].total++; if(r.prio==='严重'||r.prio==='紧急') by[k].sev++; });
+  const keys=Object.keys(by).sort();
+  const totals=keys.map(k=>by[k].total), sevs=keys.map(k=>by[k].sev);
+
+  document.getElementById('p5').innerHTML=`
+    <div class="grid2">
+      <div class="box"><h3>每日提交 vs 研发解决 对比趋势</h3><div class="chartbox"><canvas id="cCompare"></canvas></div></div>
+      <div class="box"><h3>未解决BUG 每日新增趋势（含数量标注）</h3><div class="chartbox"><canvas id="cTrend"></canvas></div></div>
+    </div>`;
+  drawCompare('cCompare', cmpKeys, subArr, resoArr);
+  drawLine('cTrend', keys, totals, sevs);
+}
+
+// ---------- 表格与图表 ----------
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toTable(head, rows){
+  return `<table><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+const dataLabels={
+  id:'dataLabels',
+  afterDatasetsDraw(chart){
+    const ctx=chart.ctx;
+    const horizontal=chart.options.indexAxis==='y';
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta=chart.getDatasetMeta(di);
+      const isLine=meta.type==='line'||chart.config.type==='line';
+      meta.data.forEach((el,i)=>{
+        const v=ds.data[i];
+        if(v===null||v===undefined) return;
+        if(isLine && v===0) return;
+        ctx.save();
+        ctx.font='bold 11px sans-serif';
+        if(isLine){ ctx.fillStyle=ds.borderColor||'#333'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(String(v), el.x, el.y-5); }
+        else if(horizontal){ ctx.fillStyle='#1f2937'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(String(v), el.x+5, el.y); }
+        else { ctx.fillStyle='#1f2937'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(String(v), el.x, el.y-3); }
+        ctx.restore();
+      });
+    });
+  }
+};
+function destroyChart(id){ if(charts[id]){charts[id].destroy(); delete charts[id];} }
+function drawDonut(id, labels, data, colors){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+}
+function drawCompare(id, labels, submitted, resolved){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'line',data:{labels,datasets:[
+    {label:'每日提交',data:submitted,borderColor:'#2f80ed',backgroundColor:'rgba(47,128,237,.12)',fill:true,tension:.3},
+    {label:'研发解决',data:resolved,borderColor:'#27ae60',backgroundColor:'rgba(39,174,96,.12)',fill:true,tension:.3}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{y:{ticks:{precision:0}}},plugins:{legend:{position:'top'}}},
+    plugins:[dataLabels]});
+}
+function drawPareto(id, labels, sev, total){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'bar',data:{labels,datasets:[
+    {label:'严重+紧急',data:sev,backgroundColor:'#e74c3c',stack:'a'},
+    {label:'总数(未解决)',data:total.map((t,i)=>t-sev[i]),backgroundColor:'#9ec3f0',stack:'a'}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      scales:{x:{stacked:true,title:{display:true,text:'缺陷数'}},y:{stacked:true,ticks:{font:{size:10}}}},
+      plugins:{legend:{position:'top'}}}});
+}
+function drawBar(id, labels, data, label, color){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'bar',data:{labels,datasets:[{label,data,backgroundColor:color}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},scales:{x:{ticks:{precision:0}}}},
+    plugins:[dataLabels]});
+}
+function drawLine(id, labels, totals, sevs){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'line',data:{labels,datasets:[
+    {label:'未解决总数',data:totals,borderColor:'#2f80ed',backgroundColor:'rgba(47,128,237,.12)',fill:true,tension:.3},
+    {label:'其中严重+紧急',data:sevs,borderColor:'#e74c3c',backgroundColor:'rgba(231,76,60,.12)',fill:true,tension:.3}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{y:{ticks:{precision:0}}},plugins:{legend:{position:'top'}}},
+    plugins:[dataLabels]});
+}
+
+
+// ---------- 遗留问题风险评估汇总报告 ----------
+function renderReport(){
+  const {unresolved,blockers,mods}=RESULT;
+  const urg=blockers.filter(r=>r.prio==='紧急');
+  const sev=blockers.filter(r=>r.prio==='严重');
+  const biz=unresolved.filter(r=>/必现/.test(r.prob)).length;
+  const p0=mods.filter(m=>m.tier==='P0');
+  const p1=mods.filter(m=>m.tier==='P1');
+
+  // 近3天新增（基于未解决数据中的最大日期）
+  let maxDate=null; unresolved.forEach(r=>{ if(r.date && (!maxDate||r.date>maxDate)) maxDate=r.date; });
+  let recent=0;
+  if(maxDate){ const t0=new Date(maxDate); t0.setDate(t0.getDate()-2); recent=unresolved.filter(r=>r.date && r.date>=t0).length; }
+
+  let level, lc, advice;
+  if(urg.length>=1 || p0.length>=1){ level='高风险'; lc='#c0392b'; advice='不建议直接发布：需先闭环 P0 模块与紧急阻断项，再做一次全量回归。'; }
+  else if(sev.length>=20){ level='中高风险'; lc='#e67e22'; advice='有条件发布：严重缺陷需在发布前全部闭环，遗留项需产品/项目评审同意并跟踪。'; }
+  else if(sev.length>=5){ level='中风险'; lc='#f1c40f'; advice='加强回归后可发布：优先处理严重缺陷，明确遗留项的发布影响。'; }
+  else { level='低风险'; lc='#27ae60'; advice='可按计划发布：保持常规回归，跟踪遗留项收敛。'; }
+
+  const conclusion=`当前遗留(未解决)问题共 ${unresolved.length} 条，其中严重 ${sev.length} 条、紧急 ${urg.length} 条，必现率 ${(biz/unresolved.length*100).toFixed(1)}%；识别 P0 高风险模块 ${p0.length} 个、P1 高风险模块 ${p1.length} 个。`;
+
+  // 高风险模块表
+  const mRows=mods.filter(m=>m.tier==='P0'||m.tier==='P1').sort((a,b)=> (a.tier==='P0'?0:1)-(b.tier==='P0'?0:1) || b.score-a.score).slice(0,12).map(m=>{
+    const d=buildRiskDesc(m);
+    return `<tr><td><span class="badge ${m.tier==='P0'?'b-P0':'b-P1'}">${m.tier}</span></td><td><b>${esc(m.comp)}</b></td><td class="num">${m.total}</td><td class="num">${m.sevUrg}</td><td class="num">${m.urg}</td><td class="num">${m.bizRate.toFixed(0)}%</td><td>${esc(d.core)}</td><td class="small">${esc(d.act)}</td></tr>`;
+  }).join('');
+
+  // 关键阻断项（紧急全部 + 严重前10）
+  const keyList=[...urg, ...sev].slice(0,15).map(r=>{
+    const tag=r.prio==='紧急'?'b-urg':'b-sev';
+    return `<tr><td><span class="badge ${tag}">${esc(r.prio)}</span></td><td>${esc(r.comp)}</td><td>${esc(r.id)}</td><td>${esc(r.summary)}</td><td>${esc(r.dev)}</td></tr>`;
+  }).join('');
+
+  // 开发负载 Top10
+  const dm={}; blockers.forEach(r=>{ if(!dm[r.dev])dm[r.dev]={t:0,u:0}; dm[r.dev].t++; if(r.prio==='紧急')dm[r.dev].u++; });
+  const devRows=Object.entries(dm).sort((a,b)=>b[1].t-a[1].t).slice(0,10).map(([k,v])=>`<tr><td><b>${esc(k)}</b></td><td class="num">${v.t}</td><td class="num">${v.u}</td></tr>`).join('');
+
+  // 建议行动项
+  const actions=[];
+  if(p0.length) actions.push(`优先闭环 P0 模块：${p0.map(m=>m.comp+'('+m.sevUrg+'条)').join('、')}。`);
+  const perf=mods.find(m=>m.comp==='FW-性能'); if(perf) actions.push(`FW-性能 单点(未解决${perf.total}、严重紧急${perf.sevUrg})：统一测量口径、合并重复单后再复测。`);
+  const health=['FW-睡眠','FW-心率','FW-压力','FW-健康扫描','FW-健康算法'].map(c=>mods.find(m=>m.comp===c)).filter(Boolean);
+  if(health.length) actions.push(`健康数据链路(睡眠/心率/压力/健康扫描)统一 owner，联合算法团队排查。`);
+  const sport=['FW-运动','FW-运动中','FW-运动设置','FW-运动报告'].map(c=>mods.find(m=>m.comp===c)).filter(Boolean);
+  if(sport.length) actions.push(`运动线(运动报告/运动/运动中/运动设置)指定统一负责人，拆分状态机/轨迹算法/提醒节拍器三条子线。`);
+  if(recent>0) actions.push(`近3天新增遗留 ${recent} 条且仍在放量，需控制新增速率，避免收口前持续涌入。`);
+  actions.push('清理 FW Version 脏数据与命名口径，保证缺陷归属可统计。');
+  const actionHtml=actions.map((a,i)=>`<div class="act"><span class="an">${i+1}</span>${esc(a)}</div>`).join('');
+
+  document.getElementById('p6').innerHTML=`
+    <div class="box" style="padding:22px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+        <div>
+          <h3 style="font-size:17px;margin:0">P62OS4.0 遗留问题风险评估汇总报告</h3>
+          <div class="small" style="margin-top:4px">数据范围：解决结果=未解决 · 生成时间 ${new Date().toLocaleString('zh-CN')}</div>
+        </div>
+        <div class="noprint">
+          <button onclick="exportReport()">导出 Excel</button>
+          <button class="ghost" onclick="switchTab('p6'); setTimeout(()=>window.print(),60)">打印报告</button>
+        </div>
+      </div>
+
+      <div style="margin:16px 0;padding:14px 16px;border-radius:10px;background:${lc}18;border-left:5px solid ${lc}">
+        <div style="font-size:15px;font-weight:700;color:${lc}">风险评估等级：${level}</div>
+        <div style="margin-top:4px;font-size:13px">${esc(advice)}</div>
+        <div style="margin-top:6px;font-size:12px;color:#555">${esc(conclusion)}</div>
+      </div>
+
+      <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:8px 0 16px">
+        ${[['遗留问题总数',unresolved.length,'未解决'],['严重(未解决)',sev.length,''],['紧急(未解决)',urg.length,''],['必现率',(biz/unresolved.length*100).toFixed(1)+'%',''],['P0模块',p0.length,''],['P1模块',p1.length,'']].map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v" style="font-size:22px">${c[1]}</div><div class="d">${c[2]||''}</div></div>`).join('')}
+      </div>
+
+      <h3>一、高风险模块评估</h3>
+      <table><thead><tr><th>等级</th><th>模块</th><th>未解决</th><th>严重+紧急</th><th>紧急</th><th>必现率</th><th>核心风险</th><th>建议动作</th></tr></thead><tbody>${mRows}</tbody></table>
+
+      <h3 style="margin-top:18px">二、关键阻断项（紧急 + 严重 Top）</h3>
+      <table><thead><tr><th>优先级</th><th>组件</th><th>关键字</th><th>概要</th><th>经办人</th></tr></thead><tbody>${keyList}</tbody></table>
+
+      <h3 style="margin-top:18px">三、开发阻断负载 Top10</h3>
+      <table><thead><tr><th>开发</th><th>阻断单</th><th>其中紧急</th></tr></thead><tbody>${devRows}</tbody></table>
+
+      <h3 style="margin-top:18px">四、建议行动项</h3>
+      ${actionHtml}
+    </div>`;
+
+  // 存摘要供导出
+  RESULT.report={level,advice,conclusion,urg,sev,biz,total:unresolved.length,p0,p1,recent,maxDate:fmtDate(maxDate)};
+}
+
+function switchTab(id){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  const t=document.querySelector(`.tab[data-p="${id}"]`); if(t) t.classList.add('active');
+  const p=document.getElementById(id); if(p) p.classList.add('active');
+}
+
+function exportReport(){
+  if(!RESULT){ toast('请先载入数据'); return; }
+  if(typeof XLSX==='undefined'){ toast('XLSX 库未加载'); return; }
+  const {unresolved,blockers,mods,report}=RESULT;
+  const aoa=[];
+  aoa.push(['P62OS4.0 遗留问题风险评估汇总报告']);
+  aoa.push(['生成时间', new Date().toLocaleString('zh-CN')]);
+  aoa.push(['数据范围','解决结果=未解决']);
+  aoa.push([]);
+  aoa.push(['风险评估等级', report.level]);
+  aoa.push(['发布建议', report.advice]);
+  aoa.push(['结论摘要', report.conclusion]);
+  aoa.push([]);
+  aoa.push(['一、高风险模块评估']);
+  aoa.push(['等级','模块','未解决数','严重+紧急','紧急','必现率','核心风险','建议动作']);
+  mods.filter(m=>m.tier==='P0'||m.tier==='P1').sort((a,b)=> (a.tier==='P0'?0:1)-(b.tier==='P0'?0:1) || b.score-a.score).slice(0,12).forEach(m=>{ const d=buildRiskDesc(m); aoa.push([m.tier,m.comp,m.total,m.sevUrg,m.urg,m.bizRate.toFixed(1)+'%',d.core,d.act]); });
+  aoa.push([]);
+  aoa.push(['二、关键阻断项（紧急 + 严重 Top15）']);
+  aoa.push(['优先级','组件','关键字','概要','经办人']);
+  [...report.urg,...report.sev].slice(0,15).forEach(r=>aoa.push([r.prio,r.comp,r.id,r.summary,r.dev]));
+  aoa.push([]);
+  aoa.push(['三、开发阻断负载 Top10']);
+  aoa.push(['开发','阻断单','其中紧急']);
+  const dm={}; blockers.forEach(r=>{ if(!dm[r.dev])dm[r.dev]={t:0,u:0}; dm[r.dev].t++; if(r.prio==='紧急')dm[r.dev].u++; });
+  Object.entries(dm).sort((a,b)=>b[1].t-a[1].t).slice(0,10).forEach(([k,v])=>aoa.push([k,v.t,v.u]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:16},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:28},{wch:34},{wch:40},{wch:20}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'风险评估汇总报告');
+  XLSX.writeFile(wb,'遗留问题风险评估汇总报告_'+fmtDate(new Date())+'.xlsx');
+  toast('汇总报告已导出');
+}
+
+// ---------- Tab 切换 ----------
+
+document.getElementById('tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(!t) return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); document.getElementById(t.dataset.p).classList.add('active');
+});
+
+// ---------- 导出 ----------
+function exportExcel(){
+  if(!RESULT){ toast('请先载入数据'); return; }
+  if(typeof XLSX==='undefined'){ toast('XLSX 库未加载'); return; }
+  const {mods,blockers}=RESULT;
+  const wb=XLSX.utils.book_new();
+  const mhead=['风险等级','模块','未解决数','严重+紧急','紧急','必现率','严重率','开发数','涉及机型','核心风险','详细风险描述','典型缺陷','根因倾向','建议动作'];
+  const mrows=mods.map(m=>{ const d=buildRiskDesc(m); return [m.tier,m.comp,m.total,m.sevUrg,m.urg,m.bizRate.toFixed(1)+'%',m.sevRate.toFixed(1)+'%',m.devs.length,m.models.join('/'),d.core,d.desc,d.samples,d.root,d.act]; });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([mhead,...mrows]), '高风险模块');
+  const bhead=['优先级','组件','关键字','概要','状态','经办人','报告人','机型','创建日期'];
+  const brows=blockers.map(r=>[r.prio,r.comp,r.id,r.summary,r.st,r.dev,r.rep,r.model,fmtDate(r.date)]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([bhead,...brows]), '阻断单明细');
+  XLSX.writeFile(wb, 'BUG分析结果_'+fmtDate(new Date())+'.xlsx');
+  toast('已导出');
+}
+</script>
+</body>
+</html>

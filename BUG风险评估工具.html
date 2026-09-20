@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUG 风险评估工具</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script>
+if (typeof XLSX === 'undefined') {
+  document.write('<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+}
+</script>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#ffffff; --line:#e5e9f2; --text:#1f2937; --muted:#6b7280;
+  --brand:#1f4e79; --accent:#2f80ed; --red:#c0392b; --amber:#e5a13a; --green:#3a9d5d;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(135deg,#1f4e79,#2f80ed);color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:20px}
+header .sub{margin-top:4px;font-size:12px;opacity:.88}
+.wrap{max-width:1320px;margin:0 auto;padding:18px 20px 70px}
+.dropzone{border:2px dashed #c7d2e0;border-radius:12px;background:#fff;padding:30px;text-align:center;cursor:pointer;transition:.2s;margin-top:16px}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:#f0f6ff}
+.dropzone .big{font-size:16px;font-weight:600}
+.dropzone .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7}
+.toolbar{display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap}
+button{background:var(--accent);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-size:13px;cursor:pointer}
+button.ghost{background:#fff;color:var(--brand);border:1px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.meta{font-size:12px;color:var(--muted);margin:2px 0 4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .k{font-size:12px;color:var(--muted)}
+.card .v{font-size:26px;font-weight:700;margin-top:4px}
+.card .d{font-size:11px;color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:4px;margin:16px 0 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{padding:9px 16px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--muted);background:transparent}
+.tab.active{background:#fff;color:var(--brand);border-color:var(--line);font-weight:600}
+.panel{display:none}
+.panel.active{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.box h3{margin:0 0 10px;font-size:14px}
+.chartbox{position:relative;height:300px}
+.chartbox.sm{height:240px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:#f0f4fa;font-weight:600;white-space:nowrap}
+tr.clickable{cursor:pointer}
+tr.clickable:hover{background:#f0f6ff}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff;white-space:nowrap}
+.b-P0{background:#c0392b}.b-P1{background:#e74c3c}.b-P2{background:#e5a13a}.b-P3{background:#7f8c8d}.b-P4{background:#b0bec5}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:11px;color:var(--muted)}
+.tip{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6}
+.filters{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+.fchip{border:1px solid var(--line);background:#fff;padding:5px 12px;border-radius:14px;font-size:12px;cursor:pointer;color:var(--muted)}
+.fchip.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.dims{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+@media(max-width:760px){.dims{grid-template-columns:1fr}}
+.dim{display:grid;grid-template-columns:110px 1fr 26px;gap:8px;align-items:center;font-size:12px}
+.dim input[type=range]{width:100%}
+.dim .val{font-weight:700;text-align:center;background:#f0f4fa;border-radius:6px;padding:2px 0}
+.wtable td input{width:56px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;text-align:center}
+.matrix{display:grid;grid-template-columns:90px repeat(5,1fr);gap:4px;margin-top:6px}
+.matrix .cell{min-height:54px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff;cursor:default}
+.matrix .axis{display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
+.desc-card{border-left:4px solid var(--accent);background:#f0f6ff;border-radius:8px;padding:12px 14px;margin-top:12px}
+.desc-card p{margin:6px 0;font-size:13px;line-height:1.7}
+.desc-card .lbl{color:var(--muted);font-size:11px;margin-right:6px}
+.footer{color:var(--muted);font-size:11px;margin-top:8px}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:rgba(31,41,55,.92);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:.3s;pointer-events:none;z-index:99}
+</style>
+</head>
+<body>
+<header>
+  <h1>BUG 风险评估工具</h1>
+  <div class="sub">Excel 输入 · 10 维自动打分 + 权重可调 + 逐条修正 · 风险矩阵/雷达图/结构化风险描述 · 回写 Excel</div>
+</header>
+<div class="wrap">
+  <div class="dropzone" id="dropzone">
+    <div class="big">拖入 / 点击选择 BUG 清单 Excel（.xlsx / .xls / .csv）</div>
+    <div class="hint">自动识别列：关键字、概要/描述、优先级/严重程度、状态、组件/模块、经办人、报告人、MODEL、日期、复现概率<br>缺失维度将根据标题与描述关键词自动推断，可在「单条详情」中逐项修正</div>
+  </div>
+  <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none">
+
+  <div class="toolbar" id="toolbar" style="display:none">
+    <button class="ghost" id="btnReload">重新选择文件</button>
+    <button id="btnExport">导出结果 Excel（回写）</button>
+    <button class="ghost" id="btnReport">导出评估报告(.md)</button>
+    <span class="meta" id="meta"></span>
+  </div>
+
+  <div id="main" style="display:none">
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-p="p1">总览</div>
+      <div class="tab" data-p="p2">风险清单</div>
+      <div class="tab" data-p="p3">单条详情</div>
+      <div class="tab" data-p="p4">风险矩阵</div>
+      <div class="tab" data-p="p5">报告</div>
+    </div>
+    <div class="panel active" id="p1"></div>
+    <div class="panel" id="p2"></div>
+    <div class="panel" id="p3"></div>
+    <div class="panel" id="p4"></div>
+    <div class="panel" id="p5"></div>
+    <div class="footer">本地运行 · SheetJS + Chart.js · 所有计算均在浏览器内完成，数据不会上传</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/*__ENGINE_BEGIN__*/
+// ===== 纯打分引擎（无 DOM 依赖，可独立测试） =====
+const DIMS = [
+  {key:'severity',      name:'严重程度',   weight:20, hint:'崩溃/数据丢失=5，功能不可用=4，主要功能异常=3，次要=2，轻微=1'},
+  {key:'scope',         name:'影响范围',   weight:12, hint:'核心链路/全量用户=5，核心功能=4，主要场景=3，边缘=2，极少数=1'},
+  {key:'probability',   name:'发生概率',   weight:12, hint:'必现=5，高频=4，偶发=3，低概率=2，极难=1'},
+  {key:'business',      name:'业务影响',   weight:10, hint:'营收/资金=5，核心业务=4，一般=3，体验=2，几乎无=1'},
+  {key:'security',      name:'数据与安全', weight:15, hint:'资金/越权/隐私泄露=5，敏感数据=4，一般数据=2，无=1（≥4 一票升级）'},
+  {key:'cost',          name:'修复成本',   weight:8,  hint:'跨端/协议/框架=5，多模块=4，单模块=3，局部=2，改文案/样式=1'},
+  {key:'urgency',       name:'紧急程度',   weight:10, hint:'阻塞发布/OTA验收=5，高=4，中=3，低=2，可延后=1'},
+  {key:'dependency',    name:'依赖与连带', weight:8,  hint:'跨端/上下游/第三方=5，多模块=4，单模块=3，弱依赖=2，独立=1'},
+  {key:'detectability', name:'检测与恢复', weight:3,  hint:'难复现/无日志/不可回滚=5，较难=4，一般=3，易检测=2，易恢复=1'},
+  {key:'rootcause',     name:'根因与技术债', weight:2, hint:'系统性问题/批量=5，共性=4，局部=3，单点=2，一次性=1'}
+];
+const LEVELS = {
+  P0:{label:'紧急', color:'#c0392b'}, P1:{label:'高', color:'#e74c3c'},
+  P2:{label:'中', color:'#e5a13a'}, P3:{label:'低', color:'#7f8c8d'}, P4:{label:'可忽略', color:'#b0bec5'}
+};
+const SEV_MAP = {'紧急':5,'严重':4,'重要':3,'次要':2,'轻微':1,'P0':5,'P1':4,'P2':3,'P3':2,'P4':1,'Blocker':5,'Critical':5,'Major':4,'Minor':2,'Trivial':1};
+const COL_ALIASES = {
+  id:['关键字','ID','Bug ID','编号','Key'],
+  title:['概要','标题','主题','Title','Summary','问题描述','缺陷描述'],
+  priority:['优先级','Priority','优先级别','缺陷级别'],
+  severity:['严重程度','严重性','Severity','严重等级','缺陷严重程度'],
+  status:['状态','Status'],
+  component:['组件','模块','所属模块','Component','Module','功能模块'],
+  assignee:['经办人','负责人','开发','Assignee','Owner','处理人'],
+  reporter:['报告人','Reporter','提交人'],
+  model:['MODEL','机型','型号','Model'],
+  date:['日期','创建日期','创建时间','Date','提交时间'],
+  prob:['复现概率','Reproduce Probability','复现率','Probability'],
+  impact:['影响范围','Impact','影响面'],
+  desc:['复现步骤','详细描述','Description','备注','复现说明']
+};
+const CORE_KEY = ['稳定性','性能','运动报告','运动中','健康','心率','血氧','睡眠','压力','电话','通话','支付','卡包','门禁','nfc','系统','框架','framework','开关机','开机','充电','ota','导航','消息','通知','来电'];
+const BROAD_KEY = ['双端','app端','固件端','全量','所有机型','全部机型','跨机型','全部用户'];
+const MINOR_KEY = ['图标','文案','显示位置','提示','措辞','颜色','字体','排版','弹窗文案'];
+const BIZ_KEY = ['运动','健康','心率','血氧','睡眠','压力','电话','通话','支付','卡包','导航','音乐','消息','通知','续航','充电','来电','电话'];
+const MONEY_KEY = ['营收','订单','支付','卡包','门禁','会员','资金','交易'];
+const MINORBIZ_KEY = ['图标','文案','排版','颜色','措辞'];
+const SEC_KEY = ['泄露','越权','隐私','密码','账户','数据丢失','数据清空','清空数据','覆盖数据','丢失','鉴权','权限绕过','脱敏','个人数据'];
+const COST_HIGH = ['双端','app端','固件端','协议','框架','framework','系统','底层','跨模块','驱动','bsp','数据链路','固件端与app'];
+const COST_MED = ['算法','同步','云','云端','蓝牙','传感器','协议'];
+const COST_LOW = ['图标','文案','位置','颜色','措辞'];
+const URG_KEY = ['ota','发布','验收','阻塞','上线','门禁','阻断','版本'];
+const DEP_KEY = ['双端','app端','固件端','协议','跨模块','上下游','第三方','云端','云','framework','系统','bsp','驱动','链路'];
+const DET_HARD = ['偶现','难复现','极难复现','无日志','静默','随机','概率复现','无提示','无响应','黑屏','死机','重启','崩溃','crash'];
+const DET_EASY = ['必现','易复现','有提示','有日志'];
+const ROOT_KEY = ['同一根因','共性','批量','多台','多机型','普遍','集中爆发','大面积'];
+
+function clamp(v,a,b){ v=Number(v); if(isNaN(v)) return a; return Math.max(a,Math.min(b,v)); }
+function has(text,list){ return list.some(k=>text.includes(k.toLowerCase())); }
+
+function pickCol(keys, aliases){
+  for(const k of keys){ const t=String(k).trim(); if(aliases.includes(t)) return k; }
+  for(const k of keys){ const t=String(k).trim(); for(const a of aliases){ if(t.includes(a)) return k; } }
+  return null;
+}
+
+function canonicalize(r, col){
+  const get=k=> (col[k] && r[col[k]]!==undefined && r[col[k]]!==null) ? String(r[col[k]]).trim() : '';
+  return {
+    id:get('id'), title:get('title'), priority:get('priority'), severity:get('severity'),
+    status:get('status'), component:get('component'), assignee:get('assignee'),
+    reporter:get('reporter'), model:get('model'), date:get('date'), prob:get('prob'),
+    impact:get('impact'), desc:get('desc')
+  };
+}
+
+function inferProbability(c, text){
+  if(c.prob){
+    const p=String(c.prob).trim();
+    const n=parseFloat(p.replace('%',''));
+    if(/\d/.test(p) && !isNaN(n)){
+      if(n>=80) return 5; if(n>=60) return 4; if(n>=40) return 3; if(n>=20) return 2; return 1;
+    }
+    if(/必现|100/.test(p)) return 5;
+    if(/大概率|高频|经常|概率高/.test(p)) return 4;
+    if(/偶现|概率低|小概率|低概率/.test(p)) return 2;
+    if(/极难|无法复现|不能复现|很难/.test(p)) return 1;
+  }
+  let v=3;
+  if(has(text,['必现','100%复现'])) v=5;
+  else if(has(text,['大概率','高频','经常复现','概率高'])) v=4;
+  else if(has(text,['偶现','概率低','小概率','低概率'])) v=2;
+  else if(has(text,['极难复现','无法复现','很难复现','不能复现'])) v=1;
+  if(/reopen/i.test(c.status||'')) v=Math.min(5,v+1);
+  return clamp(v,1,5);
+}
+
+function inferScope(text, c){
+  let v=3;
+  if(has(text,CORE_KEY)) v=4;
+  if(has(text,BROAD_KEY) || (c.model && /[+/,]/.test(c.model))) v=Math.min(5,v+1);
+  if(has(text,MINOR_KEY)) v=Math.max(1,v-1);
+  return clamp(v,1,5);
+}
+
+function inferBusiness(text){
+  let v=3;
+  if(has(text,BIZ_KEY)) v=4;
+  if(has(text,MONEY_KEY)) v=5;
+  if(has(text,MINORBIZ_KEY)) v=2;
+  return clamp(v,1,5);
+}
+
+function inferSecurity(text){
+  if(has(text,['资金','支付','卡包','门禁','鉴权','越权','泄露','隐私','密码','脱敏'])) return 5;
+  if(has(text,SEC_KEY)) return 4;
+  return 1;
+}
+
+function inferCost(text){
+  let v=2;
+  if(has(text,COST_HIGH)) v=Math.min(5,v+2);
+  else if(has(text,COST_MED)) v=Math.min(5,v+1);
+  if(has(text,COST_LOW)) v=Math.max(1,v-1);
+  return clamp(v,1,5);
+}
+
+function inferDependency(text){
+  let v=2;
+  if(has(text,DEP_KEY)) v=Math.min(5,v+1);
+  if(has(text,['多模块','涉及多个','链路','跨模块'])) v=Math.min(5,v+1);
+  return clamp(v,1,5);
+}
+
+function inferDetect(text){
+  let v=3;
+  if(has(text,DET_HARD)) v=Math.min(5,v+1);
+  if(has(text,['黑屏','死机','重启','崩溃','crash','无响应','无提示'])) v=Math.min(5,v+1);
+  if(has(text,DET_EASY)) v=Math.max(1,v-1);
+  return clamp(v,1,5);
+}
+
+function inferRoot(text, c){
+  let v=2;
+  if(/reopen/i.test(c.status||'')) v=Math.min(5,v+1);
+  if(has(text,ROOT_KEY)) v=Math.min(5,v+1);
+  if(has(text,['崩溃','死机','重启','assert','看门狗','watchdog','内存泄漏','资源泄漏'])) v=Math.min(5,v+1);
+  return clamp(v,1,5);
+}
+
+function inferScores(c){
+  const text = [c.title,c.desc,c.component,c.impact].filter(Boolean).join(' ').toLowerCase();
+  return {
+    severity:      clamp(SEV_MAP[c.severity] ?? SEV_MAP[c.priority] ?? 3, 1, 5),
+    scope:         inferScope(text, c),
+    probability:   inferProbability(c, text),
+    business:      inferBusiness(text),
+    security:      inferSecurity(text),
+    cost:          inferCost(text),
+    urgency:       clamp((SEV_MAP[c.priority] ?? SEV_MAP[c.severity] ?? 3) + ((has(text,URG_KEY)||/reopen/i.test(c.status||''))?1:0), 1, 5),
+    dependency:    inferDependency(text),
+    detectability: inferDetect(text),
+    rootcause:     inferRoot(text, c)
+  };
+}
+
+function computeScore(scores, weights){
+  const contrib={}; let weighted=0, wsum=0;
+  for(const d of DIMS){
+    const w = (weights && weights[d.key]!==undefined && weights[d.key]!=='') ? Number(weights[d.key]) : d.weight;
+    const sc = clamp(Number(scores[d.key])||3, 1, 5);
+    contrib[d.key]=sc*w;
+    weighted+=sc*w; wsum+=w;
+  }
+  const weightedNorm = wsum ? weighted/wsum : 3;
+  const score100 = Math.round((weightedNorm-1)/4*100);
+  return {weightedNorm, score100, contrib};
+}
+
+function levelOf(score100, securityHigh, priority, severity){
+  let lvl = score100>=80?'P0':score100>=60?'P1':score100>=40?'P2':score100>=20?'P3':'P4';
+  if(securityHigh && lvl!=='P0') lvl='P0';
+  const p = priority || severity;
+  if(p==='紧急'||p==='Blocker'||p==='P0') lvl='P0';
+  return lvl;
+}
+
+function topDims(contrib, scores, n){
+  n=n||3;
+  return DIMS.slice().sort((a,b)=>(contrib[b.key]||0)-(contrib[a.key]||0))
+    .filter(d=>(scores[d.key]||0)>=3)
+    .slice(0,n)
+    .map(d=>({key:d.key, name:d.name, score:scores[d.key]}));
+}
+
+function buildRiskDesc(bug){
+  const s=bug.scores;
+  let trigger='在特定操作/场景下触发';
+  if(bug.reopened) trigger='修复后回归时再次触发（Reopen）';
+  else if(s.probability>=4) trigger='常规操作即可触发（高复现）';
+  else if(s.probability<=2) trigger='特定条件/偶发场景下触发（低复现）';
+  let consequence='功能异常或体验受损';
+  if(s.security>=4) consequence='数据泄露、越权或资金/隐私损失';
+  else if(s.severity>=4) consequence='功能不可用、崩溃或数据丢失';
+  else if(s.severity>=3) consequence='核心功能受影响、体验明显下降';
+  let scope='部分用户';
+  if(s.scope>=4) scope='核心链路/较广用户群';
+  else if(s.scope>=3) scope='核心功能/主要使用场景';
+  const statement=`当${trigger}时，可能导致${consequence}，影响${scope}。`;
+  const acts=[];
+  if(bug.reopened) acts.push('Reopen 单先复现并核对上轮修复，防止二次回归');
+  if(s.security>=4) acts.push('立即止血：临时下线/加鉴权，安全侧复核');
+  if(s.severity>=4) acts.push('临时方案：降级或开关规避，随后根治');
+  if(s.cost>=4) acts.push('不逐单打补丁，指定统一 owner 做协议/链路对齐');
+  if(s.probability>=4) acts.push('优先安排复现与日志抓取');
+  if(s.dependency>=4) acts.push('拉通上下游/双端共同定位');
+  if(!acts.length) acts.push('常规跟进，按优先级排期');
+  const mitigation=acts.join('；');
+  const top=topDims(bug.contrib, s);
+  const conclusion=`主要风险来自${top.length?top.map(d=>d.name).join('、'):'整体影响'}，最坏情况为${consequence}。`;
+  return {statement, trigger, consequence, scope, mitigation, conclusion, top};
+}
+
+function summarize(bugs){
+  const n=bugs.length;
+  const levels={P0:0,P1:0,P2:0,P3:0,P4:0};
+  bugs.forEach(b=>{ levels[b.level]=(levels[b.level]||0)+1; });
+  const avg = n ? Math.round(bugs.reduce((a,b)=>a+b.score100,0)/n) : 0;
+  const high = bugs.filter(b=>b.level==='P0'||b.level==='P1');
+  return {n, levels, avg, highCount:high.length, urgentCount:levels.P0, max:bugs[0]?bugs[0].score100:0};
+}
+
+function buildMatrix(bugs){
+  const m={};
+  for(let s=1;s<=5;s++) for(let p=1;p<=5;p++) m[s+'-'+p]={scope:s,prob:p,count:0};
+  bugs.forEach(b=>{
+    const key=b.scores.scope+'-'+b.scores.probability;
+    if(m[key]) m[key].count++;
+  });
+  return m;
+}
+
+function analyzeRows(rawRows, weights){
+  const rows=Array.isArray(rawRows)?rawRows:[];
+  if(!rows.length) return {bugs:[], stats:null, matrix:null, col:{}};
+  const keys=Object.keys(rows[0]||{});
+  const col={};
+  for(const k of Object.keys(COL_ALIASES)) col[k]=pickCol(keys, COL_ALIASES[k]);
+  const bugs=rows.map((r,i)=>{
+    const c=canonicalize(r,col);
+    const scores=inferScores(c);
+    const cm=computeScore(scores,weights);
+    const securityHigh=scores.security>=4;
+    const reopened=/reopen/i.test(c.status||'');
+    const level=levelOf(cm.score100,securityHigh,c.priority,c.severity);
+    const bug={i, raw:r, c, scores, weightedNorm:cm.weightedNorm, score100:cm.score100, contrib:cm.contrib, level, securityHigh, reopened};
+    bug.desc=buildRiskDesc(bug);
+    return bug;
+  });
+  bugs.sort((a,b)=>b.score100-a.score100 || b.scores.severity-a.scores.severity);
+  return {bugs, stats:summarize(bugs), matrix:buildMatrix(bugs), col};
+}
+/*__ENGINE_END__*/
+
+// ===== UI 层 =====
+let STATE = {bugs:[], selected:0, weights:defaultWeights(), col:{}, filter:'全部', fileName:'', stats:null, matrix:null, overviewDirty:false};
+const charts = {};
+
+function defaultWeights(){ const w={}; DIMS.forEach(d=>w[d.key]=d.weight); return w; }
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0,2200); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function destroyChart(id){ if(charts[id]){charts[id].destroy(); delete charts[id];} }
+function fmtNum(n){ return Number(n).toFixed(0); }
+
+// ---------- 数据读取 ----------
+const dropzone=document.getElementById('dropzone');
+const fileInput=document.getElementById('file');
+dropzone.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); });
+['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+document.getElementById('btnReload').addEventListener('click',()=>fileInput.click());
+document.getElementById('btnExport').addEventListener('click',exportExcel);
+document.getElementById('btnReport').addEventListener('click',exportReport);
+
+function rowsFromSheet(ws){
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  let headerIdx=0;
+  for(let i=0;i<Math.min(12,aoa.length);i++){
+    const nonEmpty=(aoa[i]||[]).filter(x=>x!==''&&x!==null&&x!==undefined).length;
+    if(nonEmpty>=2){ headerIdx=i; break; }
+  }
+  return XLSX.utils.sheet_to_json(ws,{header:headerIdx+1,defval:''});
+}
+
+function loadFile(file){
+  if(typeof XLSX==='undefined'){ toast('XLSX 库加载失败，请联网后刷新页面'); return; }
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=rowsFromSheet(ws);
+      if(!rows.length){ toast('未读到数据行'); return; }
+      runAnalysis(rows);
+      STATE.fileName=file.name;
+      document.getElementById('toolbar').style.display='flex';
+      document.getElementById('main').style.display='block';
+      document.getElementById('meta').textContent=`已载入 ${rows.length} 条 · ${file.name}`;
+      dropzone.style.display='none';
+      toast('风险评估完成');
+    }catch(err){ toast('解析失败：'+err.message); console.error(err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function runAnalysis(rows){
+  const res=analyzeRows(rows, STATE.weights);
+  STATE.bugs=res.bugs; STATE.col=res.col; STATE.stats=res.stats; STATE.matrix=res.matrix;
+  STATE.selected=0; STATE.filter='全部';
+  renderAll();
+}
+
+// ---------- 渲染 ----------
+function renderAll(){ renderCards(); renderOverview(); renderList(); renderDetail(); renderMatrix(); renderReport(); }
+
+function levelBadge(lvl){ return `<span class="badge b-${lvl}">${lvl} ${LEVELS[lvl].label}</span>`; }
+
+function renderCards(){
+  const {stats}=STATE;
+  if(!stats) return;
+  document.getElementById('p1').innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="k">总条数</div><div class="v">${stats.n}</div><div class="d">已评估 BUG</div></div>
+      <div class="card"><div class="k">高风险 P0+P1</div><div class="v" style="color:var(--red)">${stats.highCount}</div><div class="d">需重点关注</div></div>
+      <div class="card"><div class="k">紧急 P0</div><div class="v" style="color:#c0392b">${stats.urgentCount}</div><div class="d">建议立即处理</div></div>
+      <div class="card"><div class="k">平均风险分</div><div class="v">${stats.avg}</div><div class="d">满分 100</div></div>
+      <div class="card"><div class="k">最高风险分</div><div class="v" style="color:var(--amber)">${stats.max}</div><div class="d">TOP1</div></div>
+    </div>`;
+}
+
+function renderOverview(){
+  const {bugs,stats}=STATE;
+  if(!stats) return;
+  const p1=document.getElementById('p1');
+  const lvLabels=['P0','P1','P2','P3','P4'];
+  const lvData=lvLabels.map(l=>stats.levels[l]||0);
+  const top=bugs.slice(0,15);
+  p1.innerHTML += `
+    <div class="grid2">
+      <div class="box"><h3>风险等级分布</h3><div class="chartbox sm"><canvas id="cLevel"></canvas></div></div>
+      <div class="box"><h3>TOP15 风险排行</h3><div class="chartbox sm"><canvas id="cTop"></canvas></div></div>
+    </div>
+    <div class="box" style="margin-top:16px">
+      <h3>权重配置（改动后自动重算，可点「重置」恢复默认）</h3>
+      <table class="wtable"><thead><tr><th>维度</th><th>说明</th><th>权重(%)</th><th>维度</th><th>说明</th><th>权重(%)</th></tr></thead>
+      <tbody>
+        ${[0,5].map(off=>{
+          const a=DIMS[off], b=DIMS[off+1], c=DIMS[off+2], d=DIMS[off+3], e=DIMS[off+4];
+          return `<tr>
+            <td>${esc(a.name)}</td><td class="small">${esc(a.hint)}</td><td><input type="number" data-w="${a.key}" value="${STATE.weights[a.key]}" min="0" max="100" step="1"></td>
+            <td>${esc(b.name)}</td><td class="small">${esc(b.hint)}</td><td><input type="number" data-w="${b.key}" value="${STATE.weights[b.key]}" min="0" max="100" step="1"></td>
+          </tr>
+          <tr>
+            <td>${esc(c.name)}</td><td class="small">${esc(c.hint)}</td><td><input type="number" data-w="${c.key}" value="${STATE.weights[c.key]}" min="0" max="100" step="1"></td>
+            <td>${esc(d.name)}</td><td class="small">${esc(d.hint)}</td><td><input type="number" data-w="${d.key}" value="${STATE.weights[d.key]}" min="0" max="100" step="1"></td>
+          </tr>
+          <tr>
+            <td>${esc(e.name)}</td><td class="small">${esc(e.hint)}</td><td><input type="number" data-w="${e.key}" value="${STATE.weights[e.key]}" min="0" max="100" step="1"></td>
+            <td></td><td></td><td></td>
+          </tr>`;
+        }).join('')}
+      </tbody></table>
+      <div class="tip">当前权重合计：<b id="wSum"></b>%（合计会自动归一化）。数据与安全维度 ≥4 分自动升级 P0；优先级=紧急 直接判 P0。</div>
+      <div style="margin-top:8px"><button class="ghost" id="btnResetW">重置默认权重</button></div>
+    </div>`;
+  updateWSum();
+  drawDonut('cLevel', lvLabels.map(l=>`${l} ${LEVELS[l].label}`), lvData, lvLabels.map(l=>LEVELS[l].color));
+  drawTopBar('cTop', top.map(b=>b.c.id||('#'+b.i)), top.map(b=>b.score100), top.map(b=>LEVELS[b.level].color));
+  document.querySelectorAll('#p1 input[data-w]').forEach(inp=>{
+    inp.addEventListener('change',e=>{
+      const k=e.target.dataset.w; STATE.weights[k]=Math.max(0,Number(e.target.value)||0);
+      rerunFromWeights(); 
+    });
+  });
+  document.getElementById('btnResetW').addEventListener('click',()=>{ STATE.weights=defaultWeights(); rerunFromWeights(); });
+}
+
+function rerunFromWeights(){
+  const res=analyzeRows(STATE.bugs.map(b=>b.raw), STATE.weights);
+  STATE.bugs=res.bugs; STATE.col=res.col; STATE.stats=res.stats; STATE.matrix=res.matrix;
+  STATE.selected=0;
+  renderAll();
+}
+
+function updateWSum(){
+  const sum=DIMS.reduce((a,d)=>a+(Number(STATE.weights[d.key])||0),0);
+  const el=document.getElementById('wSum'); if(el) el.textContent=sum;
+}
+
+function filtered(){
+  if(STATE.filter==='全部') return STATE.bugs;
+  return STATE.bugs.filter(b=>b.level===STATE.filter);
+}
+
+function renderList(){
+  const list=filtered();
+  const chips=['全部','P0','P1','P2','P3','P4'].map(l=>`<span class="fchip ${STATE.filter===l?'active':''}" data-f="${l}">${l==='全部'?'全部':l}</span>`).join('');
+  const rows=list.map(b=>{
+    const d=b.desc;
+    return `<tr class="clickable" data-i="${b.i}">
+      <td>${levelBadge(b.level)}</td>
+      <td><b>${esc(b.c.id||('#'+(b.i+1)))}</b></td>
+      <td>${esc(b.c.title)}</td>
+      <td>${esc(b.c.component)}</td>
+      <td>${esc(b.c.priority||b.c.severity)}</td>
+      <td>${esc(b.c.status)}</td>
+      <td class="num"><b>${b.score100}</b></td>
+      <td>${d.top.map(t=>esc(t.name)).join('、')||'—'}</td>
+      <td class="small">${esc(d.statement)}</td>
+      <td>${esc(b.c.assignee||b.c.reporter)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('p2').innerHTML=`
+    <div class="filters">${chips}</div>
+    <div class="box" style="overflow:auto"><h3>风险清单（共 ${list.length} 条，按风险分降序，点击行查看/修正）</h3>
+      <table><thead><tr>
+        <th>等级</th><th>关键字</th><th>概要</th><th>组件</th><th>优先级</th><th>状态</th><th>风险分</th><th>Top 风险维度</th><th>风险陈述</th><th>经办人</th>
+      </tr></thead><tbody>${rows||'<tr><td colspan="10" class="muted">无数据</td></tr>'}</tbody></table>
+    </div>`;
+  document.querySelectorAll('#p2 .fchip').forEach(ch=>ch.addEventListener('click',()=>{
+    STATE.filter=ch.dataset.f; renderList();
+  }));
+  document.querySelectorAll('#p2 tr.clickable').forEach(tr=>tr.addEventListener('click',()=>{
+    STATE.selected=Number(tr.dataset.i); renderDetail(); switchTab('p3');
+  }));
+}
+
+function descCardHTML(b){
+  return `<div class="desc-card">
+      <p><span class="lbl">风险等级</span>${levelBadge(b.level)}　<span class="lbl">风险分</span><b>${b.score100}</b>/100</p>
+      <p><span class="lbl">风险陈述</span>${esc(b.desc.statement)}</p>
+      <p><span class="lbl">缓解措施</span>${esc(b.desc.mitigation)}</p>
+      <p><span class="lbl">一句话结论</span>${esc(b.desc.conclusion)}</p>
+    </div>`;
+}
+
+function renderDetailDynamic(b){
+  const el=document.getElementById('detailDynamic');
+  if(!el) return;
+  el.innerHTML=`<div class="chartbox"><canvas id="cRadar"></canvas></div>${descCardHTML(b)}
+    <div class="tip">风险分 = Σ(维度分 × 权重) / Σ权重，映射到 0-100；<b>${b.securityHigh?'安全维度已触发一票升级':'未触发一票升级'}</b>${b.reopened?'，<b>Reopen 单</b>':''}。</div>`;
+  drawRadar('cRadar', b);
+}
+
+function refreshAfterEdit(b){
+  renderDetailDynamic(b);
+  renderCards();
+  renderList();
+  renderMatrix();
+  renderReport();
+  STATE.overviewDirty=true;
+}
+
+function renderDetail(){
+  const b=STATE.bugs[STATE.selected];
+  const p3=document.getElementById('p3');
+  if(!b){ p3.innerHTML='<div class="box muted">请先在「风险清单」中选择一条 BUG。</div>'; return; }
+  const dimRows=DIMS.map(d=>{
+    const v=b.scores[d.key];
+    return `<div class="dim">
+      <span title="${esc(d.hint)}">${esc(d.name)}</span>
+      <input type="range" min="1" max="5" step="1" value="${v}" data-d="${d.key}" ${b.securityHigh&&d.key==='security'?'style="accent-color:#c0392b"':''}>
+      <span class="val">${v}</span>
+    </div>`;
+  }).join('');
+  p3.innerHTML=`
+    <div class="grid2">
+      <div class="box">
+        <h3>基本信息和维度打分 <span class="muted" style="font-weight:400">（拖动滑条实时重算，不影响拖拽）</span></h3>
+        <table><tbody>
+          <tr><th>关键字</th><td>${esc(b.c.id||('#'+(b.i+1)))}</td><th>优先级</th><td>${esc(b.c.priority||b.c.severity||'—')}</td></tr>
+          <tr><th>组件</th><td>${esc(b.c.component||'—')}</td><th>状态</th><td>${esc(b.c.status||'—')}</td></tr>
+          <tr><th>经办人</th><td>${esc(b.c.assignee||'—')}</td><th>报告人</th><td>${esc(b.c.reporter||'—')}</td></tr>
+          <tr><th>机型</th><td>${esc(b.c.model||'—')}</td><th>日期</th><td>${esc(b.c.date||'—')}</td></tr>
+          <tr><th colspan="2">概要</th><td colspan="2">${esc(b.c.title||'—')}</td></tr>
+        </tbody></table>
+        <div class="dims" style="margin-top:12px">${dimRows}</div>
+      </div>
+      <div class="box">
+        <h3>风险画像（雷达图）与评估</h3>
+        <div id="detailDynamic"></div>
+      </div>
+    </div>`;
+  renderDetailDynamic(b);
+  document.querySelectorAll('#p3 input[data-d]').forEach(inp=>{
+    inp.addEventListener('input',e=>{
+      const k=e.target.dataset.d;
+      b.scores[k]=Number(e.target.value);
+      const cm=computeScore(b.scores, STATE.weights);
+      b.score100=cm.score100; b.contrib=cm.contrib; b.weightedNorm=cm.weightedNorm;
+      b.securityHigh=b.scores.security>=4;
+      b.level=levelOf(b.score100,b.securityHigh,b.c.priority,b.c.severity);
+      b.desc=buildRiskDesc(b);
+      e.target.nextElementSibling.textContent=e.target.value;
+      refreshAfterEdit(b);
+    });
+  });
+}
+
+function renderMatrix(){
+  const {bugs,matrix}=STATE;
+  if(!matrix) return;
+  const rows=['影响范围 ↓'];
+  for(let s=5;s>=1;s--) rows.push(s);
+  const cols=['','发生概率 1','2','3','4','5'];
+  let html='<div class="matrix">';
+  html+='<div class="axis"></div>';
+  for(let p=1;p<=5;p++) html+=`<div class="axis">概率 ${p}</div>`;
+  for(let s=5;s>=1;s--){
+    html+=`<div class="axis">范围 ${s}</div>`;
+    for(let p=1;p<=5;p++){
+      const cell=matrix[s+'-'+p];
+      const cnt=cell?cell.count:0;
+      const alpha=cnt===0?0.06:Math.min(0.35,0.12+cnt*0.05);
+      const color=cnt===0?'#e8edf4':`rgba(192,57,43,${alpha})`;
+      html+=`<div class="cell" style="background:${color};color:${cnt===0?'#9aa5b1':'#fff'}" title="影响范围${s} × 概率${p}：${cnt}条">${cnt||''}</div>`;
+    }
+  }
+  html+='</div>';
+  document.getElementById('p4').innerHTML=`
+    <div class="box">
+      <h3>风险矩阵热力图（影响范围 × 发生概率，格内为 BUG 数量）</h3>
+      ${html}
+      <div class="tip">右上角（影响大且易复现）为最危险区域；点击「风险清单」按等级/风险分进一步下钻。</div>
+    </div>`;
+}
+
+function renderReport(){
+  const {bugs,stats}=STATE;
+  if(!stats) return;
+  const top=bugs.slice(0,20);
+  const rows=top.map((b,i)=>{
+    const d=b.desc;
+    return `<tr><td>${i+1}</td><td>${levelBadge(b.level)}</td><td><b>${esc(b.c.id||('#'+(b.i+1)))}</b></td><td>${esc(b.c.title)}</td><td>${esc(b.c.component)}</td><td class="num">${b.score100}</td><td>${d.top.map(t=>esc(t.name)).join('、')||'—'}</td><td class="small">${esc(d.statement)}</td><td class="small">${esc(d.mitigation)}</td></tr>`;
+  }).join('');
+  document.getElementById('p5').innerHTML=`
+    <div class="box">
+      <h3>风险评估汇总报告</h3>
+      <div class="cards">
+        <div class="card"><div class="k">评估总数</div><div class="v">${stats.n}</div><div class="d">条 BUG</div></div>
+        <div class="card"><div class="k">P0 紧急</div><div class="v" style="color:#c0392b">${stats.urgentCount}</div><div class="d">立即处理</div></div>
+        <div class="card"><div class="k">P0+P1 高风险</div><div class="v" style="color:var(--red)">${stats.highCount}</div><div class="d">重点关注</div></div>
+        <div class="card"><div class="k">平均风险分</div><div class="v">${stats.avg}</div><div class="d">满分 100</div></div>
+      </div>
+      <div style="overflow:auto;margin-top:14px"><table>
+        <thead><tr><th>#</th><th>等级</th><th>关键字</th><th>概要</th><th>组件</th><th>风险分</th><th>Top 维度</th><th>风险陈述</th><th>缓解措施</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="tip">点击右上角「导出结果 Excel」回写评估结果；「导出评估报告」生成 Markdown 周报。</div>
+    </div>`;
+}
+
+// ---------- 图表 ----------
+const dataLabels={
+  id:'dataLabels',
+  afterDatasetsDraw(chart){
+    const ctx=chart.ctx;
+    const horizontal=chart.options.indexAxis==='y';
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta=chart.getDatasetMeta(di);
+      meta.data.forEach((el,i)=>{
+        const v=ds.data[i];
+        if(v===null||v===undefined||v===0) return;
+        ctx.save(); ctx.font='bold 11px sans-serif';
+        if(horizontal){ ctx.fillStyle='#1f2937'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(String(v),el.x+5,el.y); }
+        else { ctx.fillStyle='#1f2937'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(String(v),el.x,el.y-3); }
+        ctx.restore();
+      });
+    });
+  }
+};
+function drawDonut(id,labels,data,colors){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+}
+function drawTopBar(id,labels,data,colors){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{ticks:{precision:0}},y:{ticks:{font:{size:10}}}},plugins:{legend:{display:false}}},
+    plugins:[dataLabels]});
+}
+function drawRadar(id,bug){
+  const el=document.getElementById(id); if(!el||!window.Chart) return; destroyChart(id);
+  charts[id]=new Chart(el,{type:'radar',data:{labels:DIMS.map(d=>d.name),datasets:[{
+    label:bug.c.id||('#'+(bug.i+1)), data:DIMS.map(d=>bug.scores[d.key]),
+    backgroundColor:'rgba(47,128,237,.18)', borderColor:'#2f80ed', pointBackgroundColor:'#2f80ed', borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:5,ticks:{stepSize:1}}},plugins:{legend:{display:false}}}});
+}
+
+// ---------- 导出 ----------
+function exportExcel(){
+  if(!STATE.bugs.length){ toast('请先载入数据'); return; }
+  if(typeof XLSX==='undefined'){ toast('XLSX 库未加载'); return; }
+  const origKeys=Object.keys(STATE.bugs[0].raw||{});
+  const extraHead=['风险总分','风险等级','风险陈述','Top风险维度','缓解措施','一句话结论','建议优先级'];
+  const head=[...origKeys,...extraHead];
+  const rows=STATE.bugs.map(b=>{
+    const d=b.desc;
+    const base=origKeys.map(k=>b.raw[k]);
+    return [...base, b.score100, `${b.level} ${LEVELS[b.level].label}`, d.statement, d.top.map(t=>t.name).join('、'), d.mitigation, d.conclusion, b.level];
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head,...rows]), '风险评估明细');
+  const dist=[['风险等级','数量']];
+  ['P0','P1','P2','P3','P4'].forEach(l=>dist.push([l+' '+LEVELS[l].label, STATE.stats.levels[l]||0]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dist), '风险等级分布');
+  const mx=[['影响范围 \\ 发生概率',1,2,3,4,5]];
+  for(let s=5;s>=1;s--){ const row=[`范围${s}`]; for(let p=1;p<=5;p++) row.push(STATE.matrix[s+'-'+p].count); mx.push(row); }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mx), '风险矩阵');
+  XLSX.writeFile(wb, 'BUG风险评估结果_'+dateStr()+'.xlsx');
+  toast('结果 Excel 已导出');
+}
+
+function exportReport(){
+  if(!STATE.bugs.length){ toast('请先载入数据'); return; }
+  const {stats}=STATE;
+  const L=[];
+  L.push('# BUG 风险评估报告');
+  L.push('');
+  L.push('- 生成时间：'+new Date().toLocaleString('zh-CN'));
+  L.push('- 数据来源：'+STATE.fileName);
+  L.push('- 评估总数：'+stats.n+' 条');
+  L.push('- 风险等级：P0 紧急 '+stats.urgentCount+' 条 · P0+P1 高风险 '+stats.highCount+' 条 · 平均风险分 '+stats.avg);
+  L.push('');
+  L.push('## 一、TOP 高风险清单（Top 20）');
+  L.push('');
+  L.push('| # | 等级 | 关键字 | 概要 | 组件 | 风险分 | 风险陈述 | 缓解措施 |');
+  L.push('|---|---|---|---|---|---|---|---|');
+  STATE.bugs.slice(0,20).forEach((b,i)=>{
+    const d=b.desc;
+    L.push(`| ${i+1} | ${b.level} | ${md(b.c.id||('#'+(b.i+1)))} | ${md(b.c.title)} | ${md(b.c.component)} | ${b.score100} | ${md(d.statement)} | ${md(d.mitigation)} |`);
+  });
+  L.push('');
+  L.push('## 二、风险等级分布');
+  L.push('');
+  L.push('| P0 | P1 | P2 | P3 | P4 |');
+  L.push('|---|---|---|---|---|');
+  L.push(`| ${stats.levels.P0} | ${stats.levels.P1} | ${stats.levels.P2} | ${stats.levels.P3} | ${stats.levels.P4} |`);
+  const blob=new Blob([L.join('\n')],{type:'text/markdown;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='BUG风险评估报告_'+dateStr()+'.md'; a.click();
+  URL.revokeObjectURL(a.href);
+  toast('评估报告已导出');
+}
+function md(s){ return String(s??'').replace(/\|/g,'\\|').replace(/\n/g,' '); }
+function dateStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+// ---------- Tab ----------
+function switchTab(id){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  const t=document.querySelector(`.tab[data-p="${id}"]`); if(t) t.classList.add('active');
+  document.getElementById(id).classList.add('active');
+  if(id==='p1' && STATE.overviewDirty){ renderOverview(); STATE.overviewDirty=false; }
+}
+document.getElementById('tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(!t) return;
+  switchTab(t.dataset.p);
+});
+</script>
+</body>
+</html>
